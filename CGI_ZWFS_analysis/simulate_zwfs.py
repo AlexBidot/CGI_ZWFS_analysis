@@ -4,11 +4,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 import proper
 import roman_preflight_proper
-from corgisim import outputs
+import os
+from corgisim import outputs, scene, instrument
 from corgisim.wavefront_estimation import get_drift
 from pathlib import Path
+from enum import Enum
+from typing import Optional, Any
 
-def get_optimal_emgain(noiseless_image_hdu):
+class PupilType(Enum):
+    CLEAR = 'clear'
+    ZWFS  = 'zwfs'
+
+
+def get_optimal_emgain(noiseless_image):
     """
 
     Args:
@@ -18,13 +26,58 @@ def get_optimal_emgain(noiseless_image_hdu):
         emgain, float: optimal emgain for emccd tuning
 
     """
-    noiseless_image = noiseless_image_hdu.data
     saturation = 12000
     threshold = 0.8 * saturation
     max = np.nanmax(noiseless_image)
     emgain = threshold/max
 
     return emgain
+
+
+def get_noiseless_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, emccd: bool = False) -> scene.Scene:
+    pupil_type = PupilType(pupil_type)
+
+    if dm_case == 'flat':
+        dm_case_name = 'hlc_flat_wfe'
+        dm1 = proper.prop_fits_read(
+            roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm1_v.fits')
+        dm2 = proper.prop_fits_read(
+            roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm2_v.fits')
+    else:
+        dm_case_name = 'hlc_ni_' + dm_case
+        dm1 = proper.prop_fits_read(
+            roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm1_v.fits')
+        dm2 = proper.prop_fits_read(
+            roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm2_v.fits')
+
+    # basic optics keywords
+    optics_keywords_internal = {
+            'cor_type': 'zwfs', 'use_errors': 2, 'polaxis': 10, 'output_dim': 351,
+            'use_dm1': 1, 'dm1_v': dm1, 'use_dm2': 1, 'dm2_v': dm2,
+            'use_lyot_stop': 0, 'use_pupil_lens': 1
+            }
+
+    # enable or disable the FPM
+    if pupil_type == PupilType.CLEAR:
+        optics_keywords_internal['use_fpm'] = 0
+    elif pupil_type == PupilType.ZWFS:
+        optics_keywords_internal['use_fpm'] = 1
+
+    # pass any additional optics keywords
+    if optics_keywords is not None:
+        optics_keywords_internal.update(optics_keywords)
+
+    # define optical setup
+    optics = instrument.CorgiOptics('excam', bandpass, optics_keywords=optics_keywords_internal, if_quiet=True, integrate_pixels=True)
+
+    # define the astrophysical scene
+    base_scene = scene.Scene(star_properties)
+
+    # get the simulated image
+    sim_scene = optics.get_host_star_psf(base_scene)
+
+    return sim_scene.host_star_image
+
 
 
 def get_clear_pupil(star_properties, frame_exp, bandpass='1F', dm_case='flat', optics_keywords=None, add_drift=False, outdir=None):
