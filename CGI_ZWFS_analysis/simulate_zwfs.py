@@ -34,7 +34,7 @@ def get_optimal_emgain(noiseless_image):
     return emgain
 
 
-def get_noiseless_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, emccd: bool = False) -> scene.Scene:
+def get_noiseless_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None) -> scene.Scene:
     pupil_type = PupilType(pupil_type)
 
     if dm_case == 'flat':
