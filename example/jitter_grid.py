@@ -7,6 +7,7 @@ import matplotlib.ticker as ticker
 import matplotlib.colors as colors
 import matplotlib.gridspec as gridspec
 import pyzelda.zelda as zelda
+import pyzelda.sphere.sequence as zseq
 import scipy.ndimage as ndimage
 
 from pathlib import Path
@@ -30,11 +31,16 @@ bandpass_values = {
     '1C': {'wave': 594e-9, 'bandwidth': 0.032},
     }
 
-def build_grid(grid_size, grid_step):
+def build_grid(grid_size, grid_step, grid_geom):
     grid = np.arange(0, grid_size+1, grid_step)
-    xgrid, ygrid = np.meshgrid(grid, grid)
 
-    return grid, xgrid, ygrid
+    if grid_geom == '1d':
+        xgrid = grid
+        ygrid = np.zeros_like(grid)
+    elif grid_geom == '2d':
+        xgrid, ygrid = np.meshgrid(grid, grid)
+
+    return grid, xgrid.flatten(), ygrid.flatten()
 
 
 if __name__ == '__main__':
@@ -51,14 +57,15 @@ if __name__ == '__main__':
     bandpass = '1B'
     dm_case  = '5e-9'   # flat, 3e-8, 5e-9, 2e-9
 
-    grid_size = 30    # mas
+    grid_geom = '1d'  # 1d, 2d
+    grid_size = 100   # mas
     grid_step = 2     # mas
 
     generate = False
     analyze  = True
 
     # generate grid of offsets
-    grid, xgrid, ygrid = build_grid(grid_size, grid_step)
+    grid, xgrid, ygrid = build_grid(grid_size, grid_step, grid_geom)
 
     path = root / 'jitter_grid' / f'dm={dm_case}_bandpass={bandpass}'
     path_raw = path / 'raw'
@@ -76,7 +83,7 @@ if __name__ == '__main__':
         outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
         # generate ZWFS images
-        for x_off_mas, y_off_mas in tqdm(zip(xgrid.flatten(), ygrid.flatten()), total=xgrid.size):
+        for x_off_mas, y_off_mas in tqdm(zip(xgrid, ygrid), total=xgrid.size):
             optics_keywords = {
                 'source_x_offset_mas': x_off_mas,
                 'source_y_offset_mas': y_off_mas
@@ -90,48 +97,43 @@ if __name__ == '__main__':
     if analyze:
         opd_map_size = 296
         pupil_size   = 292
-        opd_maps = np.zeros((opd_map_size, opd_map_size, len(grid), len(grid)))
 
-        for x in range(len(grid)):
-            for y in range(len(grid)):
-                x_off_mas = xgrid[y, x]
-                y_off_mas = ygrid[y, x]
+        opd_maps = np.zeros((xgrid.size, opd_map_size, opd_map_size))
+        for idx, (x_off_mas, y_off_mas) in enumerate(zip(xgrid, ygrid)):
+            zelda_pupil_file = f'jitter_offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}'
+            clear_pupil_file = 'jitter_offset_pupil=clear'
+            dark_file        = None
 
-                zelda_pupil_file = f'jitter_offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}'
-                clear_pupil_file = 'jitter_offset_pupil=clear'
-                dark_file        = None
+            z = zelda.Sensor('ROMAN-CGI')
+            clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=False, center=(175.5, 175.5))
 
-                z = zelda.Sensor('ROMAN-CGI')
-                clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=False, center=(175.5, 175.5))
+            wave = bandpass_values[bandpass]['wave']
+            opd = z.analyze(clear_pupil, zelda_pupil, wave=wave)
 
-                wave = bandpass_values[bandpass]['wave']
-                opd = z.analyze(clear_pupil, zelda_pupil, wave=wave)
-
-                opd_maps[:, :, y, x] = opd
+            opd_maps[idx, :, :] = opd
 
         # erode pupil to avoid edge effects
-        pupil = (opd_maps[..., 0, 0] != 0)
+        pupil = (opd_maps[0] != 0)
         pupil_analysis = ndimage.binary_erosion(pupil, iterations=4)
 
-        for x in range(len(grid)):
-            for y in range(len(grid)):
-                opd = opd_maps[..., y, x]
-                opd[pupil_analysis == 0] = np.nan
-                opd = opd - np.nanmean(opd[pupil_analysis])
-                opd_maps[..., y, x] = opd
+        for iopd, opd in enumerate(opd_maps):
+            opd[pupil_analysis == 0] = np.nan
+            opd = opd - np.nanmean(opd[pupil_analysis])
+            opd_maps[idx] = opd
 
         # save
         path_processed.mkdir(parents=True, exist_ok=True)
         hdu_list = []
         hdu = fits.PrimaryHDU()
+        hdu.header['GRIDGEOM'] = grid_geom
         hdu.header['GRIDSIZE'] = grid_size
         hdu.header['GRIDSTEP'] = grid_step
         hdu_list.append(hdu)
-        hdu = fits.ImageHDU(opd_maps.T, name='OPD_MAPS')
+        hdu = fits.ImageHDU(opd_maps, name='OPD_MAPS')
         hdu_list.append(hdu)
-        hdu = fits.ImageHDU(xgrid, name='XGRID')
+        hdu = fits.BinTableHDU.from_columns([fits.Column(name='XGRID', format='D', array=xgrid)], name='XGRID')
         hdu_list.append(hdu)
-        hdu = fits.ImageHDU(ygrid, name='YGRID')
+        hdu = fits.BinTableHDU.from_columns([fits.Column(name='YGRID', format='D', array=ygrid)], name='YGRID')
         hdu_list.append(hdu)
         hdul = fits.HDUList(hdu_list)
         hdul.writeto(path_processed / 'opd_maps.fits', overwrite=True)
@@ -159,21 +161,18 @@ if __name__ == '__main__':
         mask  = zern_basis_mask
 
         opd_maps_no_tt = np.zeros_like(opd_maps)
-        for x in range(len(grid)):
-            for y in range(len(grid)):
-                opd = opd_maps[..., y, x]
+        for iopd, opd in enumerate(opd_maps):
+            # projection on Zernike basis
+            data = np.reshape(opd*pupil, (1, -1))
+            data[:, mask == 0] = 0
+            zcoeff = (basis @ data.T).squeeze() / mask.sum()
 
-                # projection on Zernike basis
-                data = np.reshape(opd*pupil, (1, -1))
-                data[:, mask == 0] = 0
-                zcoeff = (basis @ data.T).squeeze() / mask.sum()
+            # tip, tilt
+            tip_nm_rms  = zcoeff[1]
+            tilt_nm_rms = zcoeff[2]
 
-                # tip, tilt
-                tip_nm_rms   = zcoeff[1]
-                tilt_nm_rms  = zcoeff[2]
-
-                opd_no_tt = opd - tip_nm_rms * zern_basis[1] - tilt_nm_rms * zern_basis[2]
-                opd_maps_no_tt[..., y, x] = opd_no_tt
+            opd_no_tt = opd - tip_nm_rms * zern_basis[1] - tilt_nm_rms * zern_basis[2]
+            opd_maps_no_tt[iopd] = opd_no_tt
 
         opd_maps = opd_maps_no_tt
 
@@ -184,54 +183,121 @@ if __name__ == '__main__':
         hdu.header['GRIDSIZE'] = grid_size
         hdu.header['GRIDSTEP'] = grid_step
         hdu_list.append(hdu)
-        hdu = fits.ImageHDU(opd_maps_no_tt.T, name='OPD_MAPS_NO_TIP_TILT')
+        hdu = fits.ImageHDU(opd_maps_no_tt, name='OPD_MAPS_NO_TIP_TILT')
         hdu_list.append(hdu)
-        hdu = fits.ImageHDU(xgrid, name='XGRID')
+        hdu = fits.BinTableHDU.from_columns([fits.Column(name='XGRID', format='D', array=xgrid)], name='XGRID')
         hdu_list.append(hdu)
-        hdu = fits.ImageHDU(ygrid, name='YGRID')
+        hdu = fits.BinTableHDU.from_columns([fits.Column(name='YGRID', format='D', array=ygrid)], name='YGRID')
         hdu_list.append(hdu)
         hdul = fits.HDUList(hdu_list)
-        hdul.writeto(path_processed / 'opd_maps_error.fits', overwrite=True)
+        hdul.writeto(path_processed / 'opd_maps_no_tip_tilt.fits', overwrite=True)
 
         #%% compute error map
 
         # compute reconstruction error
         ref = np.where(grid == 0)[0][0]
-        reference = opd_maps[..., ref, ref]
-        opd_maps_error = opd_maps - reference[..., np.newaxis, np.newaxis]
+        reference = opd_maps[ref]
+        opd_maps_error = opd_maps - reference
 
         # build error map
-        error_map = np.zeros((len(grid), len(grid)))
-        for x in range(len(grid)):
-            for y in range(len(grid)):
-                error_map[y, x] = np.nanstd(opd_maps_error[..., y, x])
+        error_maps = np.zeros((xgrid.size, 3))
+        for iopd, opd in enumerate(opd_maps_error):
+            error_maps[iopd, 0] = np.nanmin(opd)
+            error_maps[iopd, 1] = np.nanmax(opd)
+            error_maps[iopd, 2] = np.nanstd(opd)
+
+        #%% compute PSD of error maps
+        psd_cutoff = 100  # cycles/pupil
+        psd_cube = zseq.compute_psd(None, np.nan_to_num(opd_maps_error), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
+        psd_int, psd_bnds = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
 
         #%% plot
-        fig = plt.figure('Error map', figsize=(9, 7))
-        fig.clf()
+        if grid_geom == '1d':
+            # OPD error
+            fig = plt.figure('OPD reconstruction error', figsize=(9, 7))
+            fig.clf()
 
-        gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.1])
+            ax = fig.add_subplot()
+            error_maps_plot = error_maps.copy()
+            error_maps_plot[0] = np.nan
+            ax.semilogy(xgrid, error_maps_plot[:, 2], linestyle='-', label='RMS')
+            ax.semilogy(xgrid, error_maps_plot[:, 1]-error_maps[iopd, 0], linestyle='--', label='PtV')
 
-        cmap = mpl.cm.plasma
-        norm = colors.Normalize(vmin=0, vmax=20)
+            ax.set_xlabel('Offset [mas]')
+            ax.set_xlim(0, grid_size)
 
-        ax = fig.add_subplot(gs[0])
-        cim = ax.pcolormesh(xgrid, ygrid, error_map, cmap=cmap, norm=norm)
+            ax.set_ylabel('Reconstruction error [nm]')
+            ax.set_ylim(bottom=0.1, top=500)
 
-        ax.set_xlabel('x offset [mas]')
-        ax.set_ylabel('y offset [mas]')
-        ax.set_title(f'bandpass={bandpass}, DM={dm_case}')
+            ax.set_title(f'bandpass={bandpass}, DM={dm_case}')
 
-        ax.set_aspect('equal')
+            ax.legend()
 
-        ax = fig.add_subplot(gs[1])
-        cbar = fig.colorbar(cim, cax=ax)
-        cbar.locator = ticker.MultipleLocator(5)
-        cbar.set_label('OPD error [nm rms]')
+            fig.subplots_adjust(left=0.13, right=0.87, bottom=0.1, top=0.95, wspace=0.1)
 
-        fig.subplots_adjust(left=0.13, right=0.87, bottom=0.1, top=0.95, wspace=0.1)
+            fig.savefig(path_processed / f'reconstruction_error_DM={dm_case}.png', dpi=300)
 
-        fig.savefig(path_processed / 'error_map.pdf', dpi=300)
+            # PSD
+            fig = plt.figure('PSD', figsize=(9, 7))
+            fig.clf()
+
+            gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.1])
+
+            cmap = mpl.cm.plasma
+            norm = colors.LogNorm(vmin=0.01, vmax=5)
+
+            ax = fig.add_subplot(gs[0])
+            ax.set_rasterization_zorder(-1_000)
+
+            freq = np.arange(psd_cutoff)
+            psd_int_plot = psd_int.copy()
+            psd_int_plot[psd_int_plot == 0] = 1e-10
+            cim = ax.pcolormesh(freq, xgrid, psd_int_plot.T, cmap=cmap, norm=norm, zorder=-10_000)
+            ax.contour(freq, xgrid, psd_int_plot.T, levels=[0.03, 0.1, 0.3, 1.0], colors=['w', 'w', 'k', 'k'])
+
+            ax.set_xlabel('Spatial frequency [c/p]')
+            ax.set_xlim(0, 60)
+
+            ax.set_ylabel('Offset [mas]')
+            ax.set_ylim(0, 40)
+
+            ax.set_title(f'bandpass={bandpass}, DM={dm_case}')
+
+            ax = fig.add_subplot(gs[1])
+            cbar = fig.colorbar(cim, cax=ax)
+            ax.axhline(0.03, color='w')
+            ax.axhline(0.1, color='w')
+            ax.axhline(0.3, color='k')
+            ax.axhline(1.0, color='k')
+            cbar.set_label('PSD [nm rms / (c/p)]')
+
+            fig.subplots_adjust(left=0.1, right=0.87, bottom=0.11, top=0.94, wspace=0.1)
+
+            fig.savefig(path_processed / f'reconstruction_error_psd_DM={dm_case}.png', dpi=300)
 
 
+        # fig = plt.figure('Error map', figsize=(9, 7))
+        # fig.clf()
 
+        # gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.1])
+
+        # cmap = mpl.cm.plasma
+        # norm = colors.Normalize(vmin=0, vmax=20)
+
+        # ax = fig.add_subplot(gs[0])
+        # cim = ax.pcolormesh(xgrid, ygrid, error_map, cmap=cmap, norm=norm)
+
+        # ax.set_xlabel('x offset [mas]')
+        # ax.set_ylabel('y offset [mas]')
+        # ax.set_title(f'bandpass={bandpass}, DM={dm_case}')
+
+        # ax.set_aspect('equal')
+
+        # ax = fig.add_subplot(gs[1])
+        # cbar = fig.colorbar(cim, cax=ax)
+        # cbar.locator = ticker.MultipleLocator(5)
+        # cbar.set_label('OPD error [nm rms]')
+
+        # fig.subplots_adjust(left=0.13, right=0.87, bottom=0.1, top=0.95, wspace=0.1)
+
+        # fig.savefig(path_processed / 'error_map.pdf', dpi=300)
