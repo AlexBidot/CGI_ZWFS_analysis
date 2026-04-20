@@ -67,7 +67,7 @@ if __name__ == '__main__':
     # generate grid of offsets
     grid, xgrid, ygrid = build_grid(grid_size, grid_step, grid_geom)
 
-    path = root / 'jitter_grid' / f'dm={dm_case}_bandpass={bandpass}'
+    path = root / 'offset_grid' / f'dm={dm_case}_bandpass={bandpass}'
     path_raw = path / 'raw'
     path_processed = path / 'processed'
 
@@ -79,7 +79,7 @@ if __name__ == '__main__':
         # generate clear pupil image
         scene = zwfs.get_noiseless_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case)
 
-        outpath = path_raw / 'jitter_offset_pupil=clear.fits'
+        outpath = path_raw / 'offset_pupil=clear.fits'
         outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
         # generate ZWFS images
@@ -91,7 +91,7 @@ if __name__ == '__main__':
 
             scene = zwfs.get_noiseless_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case, optics_keywords=optics_keywords)
 
-            outpath = path_raw / f'jitter_offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}.fits'
+            outpath = path_raw / f'offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}.fits'
             outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
     if analyze:
@@ -100,8 +100,8 @@ if __name__ == '__main__':
 
         opd_maps = np.zeros((xgrid.size, opd_map_size, opd_map_size))
         for idx, (x_off_mas, y_off_mas) in enumerate(zip(xgrid, ygrid)):
-            zelda_pupil_file = f'jitter_offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}'
-            clear_pupil_file = 'jitter_offset_pupil=clear'
+            zelda_pupil_file = f'offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}'
+            clear_pupil_file = 'offset_pupil=clear'
             dark_file        = None
 
             z = zelda.Sensor('ROMAN-CGI')
