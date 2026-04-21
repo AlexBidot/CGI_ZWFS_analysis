@@ -98,23 +98,23 @@ if __name__ == '__main__':
         #%% simulate data
 
         # generate clear pupil and ZWFS images without jitter
-        scene = zwfs.get_noiseless_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case)
+        scene = zwfs.get_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case)
 
         outpath = path_raw / 'pupil=clear_jitter=0.fits'
         outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
-        scene = zwfs.get_noiseless_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case)
+        scene = zwfs.get_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case)
 
         outpath = path_raw / 'pupil=zwfs_jitter=0.fits'
         outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
         # generate clear pupil and ZWFS images with jitter
-        scene = zwfs.get_noiseless_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case, jitter_keywords=jitter_keywords)
+        scene = zwfs.get_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case, jitter_keywords=jitter_keywords)
 
         outpath = path_raw / 'pupil=clear_jitter=1.fits'
         outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
-        scene = zwfs.get_noiseless_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case, jitter_keywords=jitter_keywords)
+        scene = zwfs.get_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case, jitter_keywords=jitter_keywords)
 
         outpath = path_raw / 'pupil=zwfs_jitter=1.fits'
         outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)

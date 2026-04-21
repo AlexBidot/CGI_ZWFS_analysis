@@ -77,7 +77,7 @@ if __name__ == '__main__':
             }
 
         # generate clear pupil image
-        scene = zwfs.get_noiseless_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case)
+        scene = zwfs.get_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case)
 
         outpath = path_raw / 'offset_pupil=clear.fits'
         outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
@@ -89,7 +89,7 @@ if __name__ == '__main__':
                 'source_y_offset_mas': y_off_mas
                 }
 
-            scene = zwfs.get_noiseless_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case, optics_keywords=optics_keywords)
+            scene = zwfs.get_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case, optics_keywords=optics_keywords)
 
             outpath = path_raw / f'offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}.fits'
             outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
