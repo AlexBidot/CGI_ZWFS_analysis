@@ -34,7 +34,7 @@ def get_optimal_emgain(noiseless_image):
     return emgain
 
 
-def get_noiseless_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None) -> scene.Scene:
+def get_noiseless_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None) -> scene.Scene:
     pupil_type = PupilType(pupil_type)
 
     if dm_case == 'flat':
@@ -68,7 +68,7 @@ def get_noiseless_zwfs_data(star_properties: dict, pupil_type: PupilType | str, 
         optics_keywords_internal.update(optics_keywords)
 
     # define optical setup
-    optics = instrument.CorgiOptics('excam', bandpass, optics_keywords=optics_keywords_internal, if_quiet=True, integrate_pixels=True)
+    optics = instrument.CorgiOptics('excam', bandpass, optics_keywords=optics_keywords_internal, stellar_diam_and_jitter_keywords=jitter_keywords, if_quiet=True, integrate_pixels=True)
 
     # define the astrophysical scene
     base_scene = scene.Scene(star_properties)
