@@ -26,7 +26,7 @@ def get_optimal_emgain(noiseless_image):
         emgain, float: optimal emgain for emccd tuning
 
     """
-    saturation = 12000
+    saturation = 12_000
     threshold = 0.8 * saturation
     max = np.nanmax(noiseless_image)
     emgain = threshold/max
@@ -34,7 +34,7 @@ def get_optimal_emgain(noiseless_image):
     return emgain
 
 
-def get_noiseless_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None) -> scene.Scene:
+def get_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None, emccd: bool = False, exposure_time: float = 60) -> scene.Scene:
     pupil_type = PupilType(pupil_type)
 
     if dm_case == 'flat':
@@ -76,7 +76,25 @@ def get_noiseless_zwfs_data(star_properties: dict, pupil_type: PupilType | str, 
     # get the simulated image
     sim_scene = optics.get_host_star_psf(base_scene)
 
-    return sim_scene.host_star_image
+    # apply EMCCD noise
+    if emccd:
+        # EMCCD gain tunning
+        emgain = get_optimal_emgain(sim_scene.host_star_image.data)
+        if emgain < 1:
+            print(f"WARNING: detector saturated with time exposure of {exposure_time}")
+            exposure_time *= emgain
+            emgain = 1
+            print(f"Setting time exposure to {exposure_time} second(s)")
+        print(f'EMCCD gain: {emgain:.0f}')
+
+        # generate detector image
+        emccd_keywords = {'em_gain': emgain, 'cr_rate': 0}
+        detector = instrument.CorgiDetector(emccd_keywords)
+        sim_scene = detector.generate_detector_image(sim_scene, exposure_time)
+
+        return sim_scene.image_on_detector
+    else:
+        return sim_scene.host_star_image
 
 
 
@@ -139,8 +157,7 @@ def get_clear_pupil(star_properties, frame_exp, bandpass='1F', dm_case='flat', o
                                     integrate_pixels=True)
 
     sim_scene = optics.get_host_star_psf(base_scene)
-    outputs.save_hdu_to_fits(sim_scene.host_star_image, outdir=outdir_noiseless, filename=output_save_file,
-                             write_as_L1=False)
+    outputs.save_hdu_to_fits(sim_scene.host_star_image, outdir=outdir_noiseless, filename=output_save_file, write_as_L1=False, overwrite=True)
 
     # Tuning the EMCCD
     emgain = get_optimal_emgain(sim_scene.host_star_image.data)
