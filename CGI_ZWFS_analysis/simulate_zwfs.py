@@ -143,7 +143,7 @@ def get_clear_pupil(star_properties, frame_exp, bandpass='1F', dm_case='flat', o
                              write_as_L1=False)
 
     # Tuning the EMCCD
-    emgain = get_optimal_emgain(sim_scene.host_star_image)
+    emgain = get_optimal_emgain(sim_scene.host_star_image.data)
     if emgain < 1:
         print(f"WARNING: detector saturated with time exposure of {frame_exp}")
         frame_exp *= emgain
@@ -154,7 +154,7 @@ def get_clear_pupil(star_properties, frame_exp, bandpass='1F', dm_case='flat', o
     detector = instrument.CorgiDetector(emccd_keywords)
     sim_scene = detector.generate_detector_image(sim_scene, frame_exp)
 
-    outputs.save_hdu_to_fits(sim_scene.image_on_detector, outdir=outdir, filename=output_ccd_save_file, write_as_L1=False)
+    outputs.save_hdu_to_fits(sim_scene.image_on_detector, outdir=outdir, filename=output_ccd_save_file, write_as_L1=False, overwrite=True)
 
     return 1
 
@@ -214,7 +214,7 @@ def get_zwfs_pupil(star_properties, frame_exp, total_exp_time, bandpass='1F', dm
             sim_scene = optics.get_host_star_psf(base_scene)
 
             # Tuning the EMCCD
-            emgain = get_optimal_emgain(sim_scene.host_star_image)
+            emgain = get_optimal_emgain(sim_scene.host_star_image.data)
             if emgain < 1:
                 print(f"WARNING: detector saturated with time exposure of {frame_exp}")
                 frame_exp *= emgain
@@ -226,9 +226,7 @@ def get_zwfs_pupil(star_properties, frame_exp, total_exp_time, bandpass='1F', dm
             sim_scene = detector.generate_detector_image(sim_scene, frame_exp)
 
             ### save products
-            outputs.save_hdu_to_fits(sim_scene.host_star_image, outdir=outdir_noiseless, filename=output_save_file,
-                                     write_as_L1=False, overwrite=True)
-            outputs.save_hdu_to_fits(sim_scene.image_on_detector, outdir=outdir, filename=output_ccd_save_file,
-                                     write_as_L1=False, overwrite=True)
+            outputs.save_hdu_to_fits(sim_scene.host_star_image, outdir=outdir_noiseless, filename=output_save_file, write_as_L1=False, overwrite=True)
+            outputs.save_hdu_to_fits(sim_scene.image_on_detector, outdir=outdir, filename=output_ccd_save_file, write_as_L1=False, overwrite=True)
 
     return 1
