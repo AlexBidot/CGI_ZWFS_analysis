@@ -4,23 +4,26 @@ import matplotlib.pyplot as plt
 import numpy as np
 import proper
 import roman_preflight_proper
-import os
+import copy
+from tqdm import tqdm
 from corgisim import outputs, scene, instrument
 from corgisim.wavefront_estimation import get_drift
 from pathlib import Path
 from enum import Enum
 from typing import Optional, Any
 
+
 class PupilType(Enum):
     CLEAR = 'clear'
     ZWFS  = 'zwfs'
 
 
-def get_optimal_emgain(noiseless_image):
+def get_optimal_emgain(noiseless_image: np.ndarray, percentile: int = 100):
     """
 
     Args:
-        noiseless_image, numpy.array: c(org)isim psf simulation sim_data
+        noiseless_image, np.ndarray: c(org)isim psf simulation sim_data
+        percentile, int: percentile to use for determination of the maximum
 
     Returns:
         emgain, float: optimal emgain for emccd tuning
@@ -28,13 +31,14 @@ def get_optimal_emgain(noiseless_image):
     """
     saturation = 12_000
     threshold = 0.8 * saturation
-    max = np.nanmax(noiseless_image)
-    emgain = threshold/max
+
+    max = np.nanpercentile(noiseless_image, percentile)
+    emgain = threshold / max
 
     return emgain
 
 
-def get_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None, emccd: bool = False, exposure_time: float = 60) -> scene.Scene:
+def get_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None, emccd: bool = False, emgain: float = 1.0, exposure_time: float = 60, num_exposures: int = 1) -> scene.Scene:
     pupil_type = PupilType(pupil_type)
 
     if dm_case == 'flat':
@@ -79,20 +83,29 @@ def get_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: 
     # apply EMCCD noise
     if emccd:
         # EMCCD gain tunning
-        emgain = get_optimal_emgain(sim_scene.host_star_image.data)
-        if emgain < 1:
-            print(f"WARNING: detector saturated with time exposure of {exposure_time}")
-            exposure_time *= emgain
-            emgain = 1
-            print(f"Setting time exposure to {exposure_time} second(s)")
+        if emgain is None:
+            emgain = get_optimal_emgain(sim_scene.host_star_image.data, percentile=95)
+
+            if emgain < 1:
+                exposure_time *= emgain
+                emgain = 1
+                print(f'Setting time exposure to {exposure_time:.2f} second(s)')
+
         print(f'EMCCD gain: {emgain:.0f}')
 
         # generate detector image
-        emccd_keywords = {'em_gain': emgain, 'cr_rate': 0}
+        emccd_keywords = {'em_gain': emgain,
+                          'cr_rate': 0,
+                          #'dark_rate': 0.0, 'cic_noise': 0.0, 'read_noise': 0.0,
+                          }
         detector = instrument.CorgiDetector(emccd_keywords)
-        sim_scene = detector.generate_detector_image(sim_scene, exposure_time)
 
-        return sim_scene.image_on_detector
+        exposures = []
+        for nexp in tqdm(range(num_exposures)):
+            exp = detector.generate_detector_image(sim_scene, exposure_time)
+            exposures.append(copy.deepcopy(exp.image_on_detector))
+
+        return sim_scene.host_star_image, exposures
     else:
         return sim_scene.host_star_image
 
@@ -209,10 +222,12 @@ def get_zwfs_pupil(star_properties, frame_exp, total_exp_time, bandpass='1F', dm
             output_ccd_save_file = f'zwfs_pupil_ref_{n}_cycle_{cycle}_ccd.fits'
 
             if plot:
+                print(zernike_value_m[n])
                 plt.title('WFE')
                 plt.xlabel('Zernike noll coeff')
                 plt.ylabel('WFE rms (pm)')
-                plt.plot(zernike_poly_index, zernike_value_m[n] * 1e12)
+                plt.semilogy(zernike_poly_index, np.abs(zernike_value_m[n] * 1e12))
+                plt.ylim(1e-7, 1)
                 plt.show()
 
             optics_keywords_internal = {
