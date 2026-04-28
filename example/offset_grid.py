@@ -58,8 +58,8 @@ if __name__ == '__main__':
     dm_case  = '5e-9'   # flat, 3e-8, 5e-9, 2e-9
 
     grid_geom = '1d'  # 1d, 2d
-    grid_size = 100   # mas
-    grid_step = 2     # mas
+    grid_size = 20    # mas
+    grid_step = 0.1   # mas
 
     generate = False
     analyze  = True
@@ -91,7 +91,7 @@ if __name__ == '__main__':
 
             scene = zwfs.get_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case, optics_keywords=optics_keywords)
 
-            outpath = path_raw / f'offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}.fits'
+            outpath = path_raw / f'offset_pupil=zwfs_x={x_off_mas:04.1f}_y={y_off_mas:04.1f}.fits'
             outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
     if analyze:
@@ -100,12 +100,12 @@ if __name__ == '__main__':
 
         opd_maps = np.zeros((xgrid.size, opd_map_size, opd_map_size))
         for idx, (x_off_mas, y_off_mas) in enumerate(zip(xgrid, ygrid)):
-            zelda_pupil_file = f'offset_pupil=zwfs_x={x_off_mas:03d}_y={y_off_mas:03d}'
+            zelda_pupil_file = f'offset_pupil=zwfs_x={x_off_mas:04.1f}_y={y_off_mas:04.1f}'
             clear_pupil_file = 'offset_pupil=clear'
             dark_file        = None
 
             z = zelda.Sensor('ROMAN-CGI')
-            clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=False, center=(175.5, 175.5))
+            clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=False, center=(175.5, 175.5), shift_method='interp')
 
             wave = bandpass_values[bandpass]['wave']
             opd = z.analyze(clear_pupil, zelda_pupil, wave=wave)
@@ -202,9 +202,25 @@ if __name__ == '__main__':
         # build error map
         error_maps = np.zeros((xgrid.size, 3))
         for iopd, opd in enumerate(opd_maps_error):
-            error_maps[iopd, 0] = np.nanmin(opd)
-            error_maps[iopd, 1] = np.nanmax(opd)
+            error_maps[iopd, 0] = np.nanpercentile(opd, 1)
+            error_maps[iopd, 1] = np.nanpercentile(opd, 99)
             error_maps[iopd, 2] = np.nanstd(opd)
+
+        # save
+        path_processed.mkdir(parents=True, exist_ok=True)
+        hdu_list = []
+        hdu = fits.PrimaryHDU()
+        hdu.header['GRIDSIZE'] = grid_size
+        hdu.header['GRIDSTEP'] = grid_step
+        hdu_list.append(hdu)
+        hdu = fits.ImageHDU(opd_maps_error, name='RECONSTRUCTION_ERROR')
+        hdu_list.append(hdu)
+        hdu = fits.BinTableHDU.from_columns([fits.Column(name='XGRID', format='D', array=xgrid)], name='XGRID')
+        hdu_list.append(hdu)
+        hdu = fits.BinTableHDU.from_columns([fits.Column(name='YGRID', format='D', array=ygrid)], name='YGRID')
+        hdu_list.append(hdu)
+        hdul = fits.HDUList(hdu_list)
+        hdul.writeto(path_processed / 'reconstruction_error.fits', overwrite=True)
 
         #%% compute PSD of error maps
         psd_cutoff = 100  # cycles/pupil
@@ -222,12 +238,15 @@ if __name__ == '__main__':
             error_maps_plot[0] = np.nan
             ax.semilogy(xgrid, error_maps_plot[:, 2], linestyle='-', label='RMS')
             ax.semilogy(xgrid, error_maps_plot[:, 1]-error_maps[iopd, 0], linestyle='--', label='PtV')
+            ax.axvline(4, linestyle=':', color='k', label='Jitter (no LOWFS)')
 
             ax.set_xlabel('Offset [mas]')
             ax.set_xlim(0, grid_size)
+            ax.xaxis.set_major_locator(ticker.MultipleLocator(2))
+            ax.xaxis.set_minor_locator(ticker.MultipleLocator(1))
 
             ax.set_ylabel('Reconstruction error [nm]')
-            ax.set_ylim(bottom=0.1, top=500)
+            ax.set_ylim(bottom=0.1, top=100)
 
             ax.set_title(f'bandpass={bandpass}, DM={dm_case}')
 
@@ -254,12 +273,16 @@ if __name__ == '__main__':
             psd_int_plot[psd_int_plot == 0] = 1e-10
             cim = ax.pcolormesh(freq, xgrid, psd_int_plot.T, cmap=cmap, norm=norm, zorder=-10_000)
             ax.contour(freq, xgrid, psd_int_plot.T, levels=[0.03, 0.1, 0.3, 1.0], colors=['w', 'w', 'k', 'k'])
+            ax.axhline(4, linestyle=':', color='w', label='Jitter (no LOWFS)')
+            ax.text(0.3, 4.3, 'Jitter (no LOWFS)', fontsize='x-small', color='w')
 
             ax.set_xlabel('Spatial frequency [c/p]')
             ax.set_xlim(0, 60)
 
             ax.set_ylabel('Offset [mas]')
-            ax.set_ylim(0, 40)
+            ax.set_ylim(0, 20)
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(2))
+            ax.yaxis.set_minor_locator(ticker.MultipleLocator(1))
 
             ax.set_title(f'bandpass={bandpass}, DM={dm_case}')
 

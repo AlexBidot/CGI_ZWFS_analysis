@@ -46,7 +46,7 @@ if __name__ == '__main__':
     bandpass = '1B'
     dm_case  = 'flat'   # flat, 3e-8, 5e-9, 2e-9
 
-    generate = True
+    generate = False
     analyze  = True
 
     # paths
@@ -68,8 +68,8 @@ if __name__ == '__main__':
         dr_rings = np.array([0.3, 0.3, 0.3, 0.8, 1.6, 3.2, 6.4])
         jitter_keywords = {
             'add_jitter': 1,
-            'jitter_sigmax': 0.317*10,
-            'jitter_sigmay': 0.317*10,
+            'jitter_sigmax': 4.0,
+            'jitter_sigmay': 4.0,
             'N_rings_of_offsets': nrings,
             'N_offsets_per_ring': noffsets,
             'starting_offset_ang_by_ring': np.arange(nrings)*45 % 180,
@@ -129,7 +129,7 @@ if __name__ == '__main__':
         dark_file        = None
 
         z = zelda.Sensor('ROMAN-CGI')
-        clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=True, center=(175.5, 175.5))
+        clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=True, center=(175.5, 175.5), shift_method='interp')
 
         wave = bandpass_values[bandpass]['wave']
         opd_no_jitter = z.analyze(clear_pupil, zelda_pupil, wave=wave)
@@ -140,7 +140,7 @@ if __name__ == '__main__':
         dark_file        = None
 
         z = zelda.Sensor('ROMAN-CGI')
-        clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=True, center=(175.5, 175.5))
+        clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=True, center=(175.5, 175.5), shift_method='interp')
 
         wave = bandpass_values[bandpass]['wave']
         opd_jitter = z.analyze(clear_pupil, zelda_pupil, wave=wave)
@@ -158,8 +158,46 @@ if __name__ == '__main__':
         opd_jitter = opd_jitter - np.nanmean(opd_jitter[pupil_analysis])
         fits.writeto(path_processed / 'opd_map_jitter=1.fits', opd_jitter, overwrite=True)
 
+        #%% tip-tilt subtraction
+
+        # build custom Zernike basis
+        nzernike = 20
+        rho, theta = aperture.coordinates(opd_map_size, pupil_size/2, cpix=True, strict=False, outside=0)
+        basis = zernike.arbitrary_basis(pupil_analysis, nterms=nzernike, rho=rho, theta=theta)
+
+        zern_basis = np.nan_to_num(basis)
+        zern_basis_vec  = np.reshape(zern_basis, (nzernike, -1))
+        zern_basis_mask = pupil_analysis.flatten()
+        zern_basis_rms2pv = np.zeros((nzernike))
+
+        ipup = pupil_analysis != 0
+        for i in range(nzernike):
+            mode = zern_basis[i, ipup]
+            zern_basis_rms2pv[i] = (mode.max() - mode.min()) / mode.std()
+
+        # subtraction
+        pupil = pupil_analysis
+        basis = zern_basis_vec
+        mask  = zern_basis_mask
+
+        opd_maps = np.stack((opd_no_jitter, opd_jitter))
+        opd_maps_nott = np.zeros_like(opd_maps)
+        for iopd, opd in enumerate(opd_maps):
+            # projection on Zernike basis
+            data = np.reshape(opd*pupil, (1, -1))
+            data[:, mask == 0] = 0
+            zcoeff = (basis @ data.T).squeeze() / mask.sum()
+
+            # tip, tilt
+            tip_nm_rms  = zcoeff[1]
+            tilt_nm_rms = zcoeff[2]
+
+            opd_no_tt = opd - tip_nm_rms * zern_basis[1] - tilt_nm_rms * zern_basis[2]
+            opd_maps_nott[iopd] = opd_no_tt
+
         #%%
-        diff = opd_jitter - opd_no_jitter
+        opd_diff = opd_jitter - opd_no_jitter
+        opd_diff_nott = opd_maps_nott[1] - opd_maps_nott[0]
 
         fig = plt.figure('Reconstruction error', figsize=(9, 7))
         fig.clf()
@@ -172,7 +210,7 @@ if __name__ == '__main__':
         ax = fig.add_subplot(gs[0])
         ax.set_rasterization_zorder(-1_000)
 
-        cim = ax.imshow(diff, cmap=cmap, norm=norm)
+        cim = ax.imshow(opd_diff, cmap=cmap, norm=norm)
 
         ax.xaxis.set_ticks([])
         ax.yaxis.set_ticks([])
@@ -185,4 +223,36 @@ if __name__ == '__main__':
 
         fig.subplots_adjust(left=0.02, right=0.85, bottom=0.03, top=0.94, wspace=0.1)
 
-        # fig.savefig(path_processed / f'reconstruction_error_psd_DM={dm_case}.png', dpi=300)
+        fig.savefig(path_processed / f'reconstruction_error_DM={dm_case}.png', dpi=300)
+
+        #%% PSD
+        psd_cutoff = 100  # cycles/pupil
+
+        psd_cube = zseq.compute_psd(None, np.nan_to_num(opd_diff[np.newaxis, ...]), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
+        psd_int, psd_bnds = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
+
+        psd_cube = zseq.compute_psd(None, np.nan_to_num(opd_diff_nott[np.newaxis, ...]), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
+        psd_int_nott, psd_bnds_nott = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
+
+        fig = plt.figure('Reconstruction error PSD', figsize=(9, 7))
+        fig.clf()
+
+        ax = fig.add_subplot(111)
+
+        ax.step(psd_bnds[:, 0], psd_int, label='')
+        ax.step(psd_bnds[:, 0], psd_int_nott, label='Tip-tilt removed')
+
+        ax.set_xlabel('Spatial frequency [c/p]')
+        ax.set_xlim(0, 60)
+
+        ax.set_yscale('log')
+        ax.set_ylabel('PSD [nm rms / (c/p)]')
+        ax.set_ylim(1e-2, 1e-1)
+
+        ax.legend()
+
+        ax.set_title(f'bandpass={bandpass}, DM={dm_case}')
+
+        fig.subplots_adjust(left=0.18, right=0.95, bottom=0.11, top=0.94, wspace=0.1)
+
+        fig.savefig(path_processed / f'reconstruction_error_psd_DM={dm_case}.png', dpi=300)
