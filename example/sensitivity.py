@@ -78,7 +78,7 @@ if __name__ == '__main__':
         #for pupil in (zwfs.PupilType.ZWFS, ):
 
             # reference data
-            noiseless_ref, exposures_ref = zwfs.get_zwfs_data(ref_star_properties, pupil_type, bandpass=bandpass, dm_case=dm_case, emccd=True, emgain=emgain, exposure_time=exptime, num_exposures=nexp)
+            noiseless_ref, exposures_ref = zwfs.generate_zwfs_data(ref_star_properties, pupil_type, bandpass=bandpass, dm_case=dm_case, emccd=True, emgain=emgain, exposure_time=exptime, num_exposures=nexp)
             data = np.array([exp.data.astype(float) for exp in exposures_ref])
             exposure_ref = np.mean(data, axis=0)
 
@@ -98,7 +98,7 @@ if __name__ == '__main__':
                 hdul[0].header['NEXP']    = (nexp, 'Number of exposures')
 
             # data with differential aberration
-            noiseless, exposures = zwfs.get_zwfs_data(ref_star_properties, pupil_type, bandpass=bandpass, dm_case=dm_case, optics_keywords=zernike_keywords, emccd=True, emgain=emgain, exposure_time=exptime, num_exposures=nexp)
+            noiseless, exposures = zwfs.generate_zwfs_data(ref_star_properties, pupil_type, bandpass=bandpass, dm_case=dm_case, optics_keywords=zernike_keywords, emccd=True, emgain=emgain, exposure_time=exptime, num_exposures=nexp)
             data = np.array([exp.data.astype(float) for exp in exposures])
             exposure = np.mean(data, axis=0)
 

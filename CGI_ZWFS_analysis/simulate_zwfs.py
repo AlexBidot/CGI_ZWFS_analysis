@@ -38,7 +38,7 @@ def get_optimal_emgain(noiseless_image: np.ndarray, percentile: int = 100):
     return emgain
 
 
-def get_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None, emccd: bool = False, emgain: float = 1.0, exposure_time: float = 60, num_exposures: int = 1) -> scene.Scene:
+def generate_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None, emccd: bool = False, emgain: float = 1.0, exposure_time: float = 60, num_exposures: int = 1) -> scene.Scene:
     pupil_type = PupilType(pupil_type)
 
     if dm_case == 'flat':
