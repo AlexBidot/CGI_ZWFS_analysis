@@ -46,7 +46,7 @@ if __name__ == '__main__':
     bandpass = '1B'
     dm_case  = 'flat'   # flat, 3e-8, 5e-9, 2e-9
 
-    generate = False
+    generate = True
     analyze  = True
 
     # paths
@@ -101,23 +101,23 @@ if __name__ == '__main__':
         scene = zwfs.generate_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case)
 
         outpath = path_raw / 'pupil=clear_jitter=0.fits'
-        outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
+        outputs.save_hdu_to_fits(scene.host_star_image, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
         scene = zwfs.generate_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case)
 
         outpath = path_raw / 'pupil=zwfs_jitter=0.fits'
-        outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
+        outputs.save_hdu_to_fits(scene.host_star_image, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
         # generate clear pupil and ZWFS images with jitter
         scene = zwfs.generate_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case, jitter_keywords=jitter_keywords)
 
         outpath = path_raw / 'pupil=clear_jitter=1.fits'
-        outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
+        outputs.save_hdu_to_fits(scene.host_star_image, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
         scene = zwfs.generate_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case, jitter_keywords=jitter_keywords)
 
         outpath = path_raw / 'pupil=zwfs_jitter=1.fits'
-        outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
+        outputs.save_hdu_to_fits(scene.host_star_image, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
     if analyze:
         opd_map_size = 296

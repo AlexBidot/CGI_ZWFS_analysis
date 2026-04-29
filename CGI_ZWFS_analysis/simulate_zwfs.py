@@ -38,7 +38,7 @@ def get_optimal_emgain(noiseless_image: np.ndarray, percentile: int = 100):
     return emgain
 
 
-def generate_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None, emccd: bool = False, emgain: float = 1.0, exposure_time: float = 60, num_exposures: int = 1) -> scene.Scene:
+def generate_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandpass: str = '1F', dm_case: str = 'flat', optics_keywords: dict = None, jitter_keywords: dict = None) -> scene.Scene:
     pupil_type = PupilType(pupil_type)
 
     if dm_case == 'flat':
@@ -80,35 +80,35 @@ def generate_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandp
     # get the simulated image
     sim_scene = optics.get_host_star_psf(base_scene)
 
-    # apply EMCCD noise
-    if emccd:
-        # EMCCD gain tunning
-        if emgain is None:
-            emgain = get_optimal_emgain(sim_scene.host_star_image.data, percentile=95)
+    return sim_scene
 
-            if emgain < 1:
-                exposure_time *= emgain
-                emgain = 1
-                print(f'Setting time exposure to {exposure_time:.2f} second(s)')
 
-        print(f'EMCCD gain: {emgain:.0f}')
+def observe_with_emccd(sim_scene, emgain: float = 1.0, photon_counting: bool = False, exposure_time: float = 60, num_exposures: int = 1):
+    # EMCCD gain tunning
+    if emgain is None:
+        emgain = get_optimal_emgain(sim_scene.host_star_image.data, percentile=95)
 
-        # generate detector image
-        emccd_keywords = {'em_gain': emgain,
-                          'cr_rate': 0,
-                          #'dark_rate': 0.0, 'cic_noise': 0.0, 'read_noise': 0.0,
-                          }
-        detector = instrument.CorgiDetector(emccd_keywords)
+        if emgain < 1:
+            exposure_time *= emgain
+            emgain = 1
+            print(f'Setting individual exposures to {exposure_time:.2f} second(s)')
 
-        exposures = []
-        for nexp in tqdm(range(num_exposures)):
-            exp = detector.generate_detector_image(sim_scene, exposure_time)
-            exposures.append(copy.deepcopy(exp.image_on_detector))
+    print(f'EMCCD gain: {emgain:.0f}')
 
-        return sim_scene.host_star_image, exposures
-    else:
-        return sim_scene.host_star_image
+    # generate detector image
+    emccd_keywords = {
+        'em_gain': emgain,
+        'cr_rate': 0,
+        #'dark_rate': 0.0, 'cic_noise': 0.0, 'read_noise': 0.0,
+        }
+    detector = instrument.CorgiDetector(emccd_keywords, photon_counting=photon_counting)
 
+    exposures = []
+    for nexp in tqdm(range(num_exposures)):
+        exp = detector.generate_detector_image(sim_scene, exposure_time)
+        exposures.append(copy.deepcopy(exp.image_on_detector))
+
+    return exposures
 
 
 def get_clear_pupil(star_properties, frame_exp, bandpass='1F', dm_case='flat', optics_keywords=None, add_drift=False, outdir=None):

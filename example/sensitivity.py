@@ -31,6 +31,19 @@ bandpass_values = {
     }
 
 
+class DummyData():
+    def __init__(self, data):
+        self.data = data
+        self.header = {'COMMENT': ['polarization_basis: None', ]}
+
+
+class DummyScene():
+    def __init__(self, data):
+        self.host_star_image = DummyData(data)
+        self.point_source_image = None
+        self.twoD_image = None
+
+
 if __name__ == '__main__':
     __spec__ = None
 
@@ -51,7 +64,8 @@ if __name__ == '__main__':
     exptime = 2
     nexp    = 1500
 
-    generate = True
+    generate = False
+    observe  = False
     analyze  = True
 
     # paths
@@ -73,20 +87,39 @@ if __name__ == '__main__':
             'zval_m': np.array([Zamp, ])*1e-9,
             }
 
-        # generate clear pupil and ZWFS images
+        # generate noiseless clear pupil and ZWFS images
         for pupil_type in (zwfs.PupilType.CLEAR, zwfs.PupilType.ZWFS, ):
         #for pupil in (zwfs.PupilType.ZWFS, ):
 
-            # reference data
-            noiseless_ref, exposures_ref = zwfs.generate_zwfs_data(ref_star_properties, pupil_type, bandpass=bandpass, dm_case=dm_case, emccd=True, emgain=emgain, exposure_time=exptime, num_exposures=nexp)
-            data = np.array([exp.data.astype(float) for exp in exposures_ref])
-            exposure_ref = np.mean(data, axis=0)
+            # noiseless reference data
+            noiseless_ref = zwfs.generate_zwfs_data(ref_star_properties, pupil_type, bandpass=bandpass, dm_case=dm_case)
 
             outpath = path_raw / f'pupil={pupil_type.value}_aberration=0_emccd=0.fits'
-            fits.writeto(outpath, noiseless_ref.data, overwrite=True)
+            fits.writeto(outpath, noiseless_ref.host_star_image.data, overwrite=True)
             with fits.open(outpath, mode='update') as hdul:
                 hdul[0].header['ZINDEX']  = (Zidx, 'Aberration Zernike index')
                 hdul[0].header['ZAMPL']   = (Zamp, '[nm rms] Aberration amplitude')
+
+            # noiseless data with differential aberration
+            noiseless = zwfs.generate_zwfs_data(ref_star_properties, pupil_type, bandpass=bandpass, dm_case=dm_case, optics_keywords=zernike_keywords,)
+
+            outpath = path_raw / f'pupil={pupil_type.value}_aberration=1_emccd=0.fits'
+            fits.writeto(outpath, noiseless.host_star_image.data, overwrite=True)
+            with fits.open(outpath, mode='update') as hdul:
+                hdul[0].header['ZINDEX']  = (Zidx, 'Aberration Zernike index')
+                hdul[0].header['ZAMPL']   = (Zamp, '[nm rms] Aberration amplitude')
+
+    if observe:
+        # generate EMCCD-observed clear pupil and ZWFS images
+        for pupil_type in (zwfs.PupilType.CLEAR, zwfs.PupilType.ZWFS, ):
+            # reference data
+            inpath = path_raw / f'pupil={pupil_type.value}_aberration=0_emccd=0.fits'
+            noiseless_ref = fits.getdata(inpath)
+
+            scene = DummyScene(noiseless_ref)
+            exposures_ref = zwfs.observe_with_emccd(scene, emgain=emgain, photon_counting=True, exposure_time=exptime, num_exposures=nexp)
+            data = np.array([exp.data.astype(float) for exp in exposures_ref])
+            exposure_ref = np.mean(data, axis=0)
 
             outpath = path_raw / f'pupil={pupil_type.value}_aberration=0_emccd=1.fits'
             fits.writeto(outpath, exposure_ref, overwrite=True)
@@ -98,15 +131,13 @@ if __name__ == '__main__':
                 hdul[0].header['NEXP']    = (nexp, 'Number of exposures')
 
             # data with differential aberration
-            noiseless, exposures = zwfs.generate_zwfs_data(ref_star_properties, pupil_type, bandpass=bandpass, dm_case=dm_case, optics_keywords=zernike_keywords, emccd=True, emgain=emgain, exposure_time=exptime, num_exposures=nexp)
+            inpath = path_raw / f'pupil={pupil_type.value}_aberration=1_emccd=0.fits'
+            noiseless = fits.getdata(inpath)
+
+            scene = DummyScene(noiseless)
+            exposures = zwfs.observe_with_emccd(scene, emgain=emgain, photon_counting=True, exposure_time=exptime, num_exposures=nexp)
             data = np.array([exp.data.astype(float) for exp in exposures])
             exposure = np.mean(data, axis=0)
-
-            outpath = path_raw / f'pupil={pupil_type.value}_aberration=1_emccd=0.fits'
-            fits.writeto(outpath, noiseless.data, overwrite=True)
-            with fits.open(outpath, mode='update') as hdul:
-                hdul[0].header['ZINDEX']  = (Zidx, 'Aberration Zernike index')
-                hdul[0].header['ZAMPL']   = (Zamp, '[nm rms] Aberration amplitude')
 
             outpath = path_raw / f'pupil={pupil_type.value}_aberration=1_emccd=1.fits'
             fits.writeto(outpath, exposure, overwrite=True)
@@ -128,7 +159,7 @@ if __name__ == '__main__':
         ax.yaxis.set_ticks([])
 
         ax = fig.add_subplot(132, sharex=ax, sharey=ax)
-        ax.imshow(noiseless.data - noiseless_ref.data, vmin=-10, vmax=10, cmap='bwr')
+        ax.imshow(noiseless - noiseless_ref, vmin=-10, vmax=10, cmap='bwr')
         ax.set_title('Differential ZWFS image - noiseless')
         ax.xaxis.set_ticks([])
         ax.yaxis.set_ticks([])

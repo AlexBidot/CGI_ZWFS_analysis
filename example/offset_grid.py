@@ -80,7 +80,7 @@ if __name__ == '__main__':
         scene = zwfs.generate_zwfs_data(ref_star_properties, zwfs.PupilType.CLEAR, bandpass=bandpass, dm_case=dm_case)
 
         outpath = path_raw / 'offset_pupil=clear.fits'
-        outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
+        outputs.save_hdu_to_fits(scene.host_star_image, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
         # generate ZWFS images
         for x_off_mas, y_off_mas in tqdm(zip(xgrid, ygrid), total=xgrid.size):
@@ -92,7 +92,7 @@ if __name__ == '__main__':
             scene = zwfs.generate_zwfs_data(ref_star_properties, zwfs.PupilType.ZWFS, bandpass=bandpass, dm_case=dm_case, optics_keywords=optics_keywords)
 
             outpath = path_raw / f'offset_pupil=zwfs_x={x_off_mas:04.1f}_y={y_off_mas:04.1f}.fits'
-            outputs.save_hdu_to_fits(scene, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
+            outputs.save_hdu_to_fits(scene.host_star_image, outdir=outpath.parent, filename=outpath.name, write_as_L1=False, overwrite=True)
 
     if analyze:
         opd_map_size = 296
