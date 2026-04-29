@@ -13,9 +13,30 @@ from enum import Enum
 from typing import Optional, Any
 
 
+bandpass_values = {
+    '1F': {'wave': 575e-9, 'bandwidth': 0.101},
+    '1A': {'wave': 556e-9, 'bandwidth': 0.035},
+    '1B': {'wave': 575e-9, 'bandwidth': 0.033},
+    '1C': {'wave': 594e-9, 'bandwidth': 0.032},
+    }
+
+
 class PupilType(Enum):
     CLEAR = 'clear'
     ZWFS  = 'zwfs'
+
+
+class DummyData():
+    def __init__(self, data):
+        self.data = data
+        self.header = {'COMMENT': ['polarization_basis: None', ]}
+
+
+class DummyScene():
+    def __init__(self, data):
+        self.host_star_image = DummyData(data)
+        self.point_source_image = None
+        self.twoD_image = None
 
 
 def get_optimal_emgain(noiseless_image: np.ndarray, percentile: int = 100):

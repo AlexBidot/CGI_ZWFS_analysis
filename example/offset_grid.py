@@ -24,12 +24,6 @@ except ModuleNotFoundError:
     sys.path.append(str(Path(__file__).parent.parent))
     import CGI_ZWFS_analysis.simulate_zwfs as zwfs
 
-bandpass_values = {
-    '1F': {'wave': 575e-9, 'bandwidth': 0.101},
-    '1A': {'wave': 556e-9, 'bandwidth': 0.035},
-    '1B': {'wave': 575e-9, 'bandwidth': 0.033},
-    '1C': {'wave': 594e-9, 'bandwidth': 0.032},
-    }
 
 def build_grid(grid_size, grid_step, grid_geom):
     grid = np.arange(0, grid_size+1, grid_step)
@@ -107,7 +101,7 @@ if __name__ == '__main__':
             z = zelda.Sensor('ROMAN-CGI')
             clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=False, center=(175.5, 175.5), shift_method='interp')
 
-            wave = bandpass_values[bandpass]['wave']
+            wave = zwfs.bandpass_values[bandpass]['wave']
             opd = z.analyze(clear_pupil, zelda_pupil, wave=wave)
 
             opd_maps[idx, :, :] = opd

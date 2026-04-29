@@ -23,26 +23,6 @@ except ModuleNotFoundError:
     sys.path.append(str(Path(__file__).parent.parent))
     import CGI_ZWFS_analysis.simulate_zwfs as zwfs
 
-bandpass_values = {
-    '1F': {'wave': 575e-9, 'bandwidth': 0.101},
-    '1A': {'wave': 556e-9, 'bandwidth': 0.035},
-    '1B': {'wave': 575e-9, 'bandwidth': 0.033},
-    '1C': {'wave': 594e-9, 'bandwidth': 0.032},
-    }
-
-
-class DummyData():
-    def __init__(self, data):
-        self.data = data
-        self.header = {'COMMENT': ['polarization_basis: None', ]}
-
-
-class DummyScene():
-    def __init__(self, data):
-        self.host_star_image = DummyData(data)
-        self.point_source_image = None
-        self.twoD_image = None
-
 
 if __name__ == '__main__':
     __spec__ = None
@@ -59,13 +39,13 @@ if __name__ == '__main__':
     dm_case  = 'flat'   # flat, 3e-8, 5e-9, 2e-9
 
     Zidx    = 35     # Zernike polynomial Noll index
-    Zamp    = 0.01  # nm rms
+    Zamp    = 5.00  # nm rms
     emgain  = 2
-    exptime = 2
-    nexp    = 1500
+    exptime = 1
+    nexp    = 2
 
-    generate = False
-    observe  = False
+    generate = True
+    observe  = True
     analyze  = True
 
     # paths
@@ -116,8 +96,8 @@ if __name__ == '__main__':
             inpath = path_raw / f'pupil={pupil_type.value}_aberration=0_emccd=0.fits'
             noiseless_ref = fits.getdata(inpath)
 
-            scene = DummyScene(noiseless_ref)
-            exposures_ref = zwfs.observe_with_emccd(scene, emgain=emgain, photon_counting=True, exposure_time=exptime, num_exposures=nexp)
+            scene = zwfs.DummyScene(noiseless_ref)
+            exposures_ref = zwfs.observe_with_emccd(scene, emgain=emgain, photon_counting=False, exposure_time=exptime, num_exposures=nexp)
             data = np.array([exp.data.astype(float) for exp in exposures_ref])
             exposure_ref = np.mean(data, axis=0)
 
@@ -134,8 +114,8 @@ if __name__ == '__main__':
             inpath = path_raw / f'pupil={pupil_type.value}_aberration=1_emccd=0.fits'
             noiseless = fits.getdata(inpath)
 
-            scene = DummyScene(noiseless)
-            exposures = zwfs.observe_with_emccd(scene, emgain=emgain, photon_counting=True, exposure_time=exptime, num_exposures=nexp)
+            scene = zwfs.DummyScene(noiseless)
+            exposures = zwfs.observe_with_emccd(scene, emgain=emgain, photon_counting=False, exposure_time=exptime, num_exposures=nexp)
             data = np.array([exp.data.astype(float) for exp in exposures])
             exposure = np.mean(data, axis=0)
 
@@ -188,7 +168,7 @@ if __name__ == '__main__':
         z = zelda.Sensor('ROMAN-CGI')
         clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=True, center=(175.5, 175.5), shift_method='interp')
 
-        wave = bandpass_values[bandpass]['wave']
+        wave = zwfs.bandpass_values[bandpass]['wave']
         opd_ref_noiseless = z.analyze(clear_pupil, zelda_pupil, wave=wave)
 
         # reference case
@@ -199,7 +179,7 @@ if __name__ == '__main__':
         z = zelda.Sensor('ROMAN-CGI')
         clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=True, center=(175.5, 175.5), shift_method='interp')
 
-        wave = bandpass_values[bandpass]['wave']
+        wave = zwfs.bandpass_values[bandpass]['wave']
         opd_ref = z.analyze(clear_pupil, zelda_pupil, wave=wave)
 
         # differential aberration case - NOISELESS
@@ -210,7 +190,7 @@ if __name__ == '__main__':
         z = zelda.Sensor('ROMAN-CGI')
         clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=True, center=(175.5, 175.5), shift_method='interp')
 
-        wave = bandpass_values[bandpass]['wave']
+        wave = zwfs.bandpass_values[bandpass]['wave']
         opd_noiseless = z.analyze(clear_pupil, zelda_pupil, wave=wave)
 
         # differential aberration case
@@ -221,7 +201,7 @@ if __name__ == '__main__':
         z = zelda.Sensor('ROMAN-CGI')
         clear_pupil, zelda_pupil, center = z.read_files(path_raw, [clear_pupil_file], [zelda_pupil_file], dark_file, collapse_clear=True, collapse_zelda=True, center=(175.5, 175.5), shift_method='interp')
 
-        wave = bandpass_values[bandpass]['wave']
+        wave = zwfs.bandpass_values[bandpass]['wave']
         opd = z.analyze(clear_pupil, zelda_pupil, wave=wave)
 
         #%% additional post-processing
