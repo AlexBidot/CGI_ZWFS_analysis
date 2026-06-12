@@ -36,10 +36,10 @@ if __name__ == '__main__':
     vmag   = 2
     sptype = 'G0V'
 
-    bandpass = '1B'
+    bandpass = '1F'
     dm_case  = 'flat'   # flat, 3e-8, 5e-9, 2e-9
 
-    generate = True
+    generate = False
     analyze  = True
 
     # paths
@@ -58,7 +58,7 @@ if __name__ == '__main__':
         nrings   = 7
         r_ring0  = 0.075
         noffsets = np.array([3, 5, 7, 10, 10, 15, 20])
-        dr_rings = np.array([0.3, 0.3, 0.3, 0.8, 1.6, 3.2, 6.4])
+        dr_rings = np.array([0.3, 0.3, 0.3, 0.8, 1.6, 3.2, 3.2])
         jitter_keywords = {
             'add_jitter': 1,
             'jitter_sigmax': 4.0,
@@ -216,7 +216,7 @@ if __name__ == '__main__':
 
         fig.subplots_adjust(left=0.02, right=0.85, bottom=0.03, top=0.94, wspace=0.1)
 
-        fig.savefig(path_processed / f'reconstruction_error_DM={dm_case}.png', dpi=300)
+        fig.savefig(path_processed / f'jitter_reconstruction_error_dm={dm_case}_bandpass={bandpass}.pdf', dpi=300)
 
         #%% PSD
         psd_cutoff = 100  # cycles/pupil
@@ -232,7 +232,7 @@ if __name__ == '__main__':
 
         ax = fig.add_subplot(111)
 
-        ax.step(psd_bnds[:, 0], psd_int, label='')
+        ax.step(psd_bnds[:, 0], psd_int, label='Original')
         ax.step(psd_bnds[:, 0], psd_int_nott, label='Tip-tilt removed')
 
         ax.set_xlabel('Spatial frequency [c/p]')
@@ -240,7 +240,7 @@ if __name__ == '__main__':
 
         ax.set_yscale('log')
         ax.set_ylabel('PSD [nm rms / (c/p)]')
-        ax.set_ylim(1e-2, 1e-1)
+        ax.set_ylim(1e-2, 2e-1)
 
         ax.legend()
 
@@ -248,4 +248,4 @@ if __name__ == '__main__':
 
         fig.subplots_adjust(left=0.18, right=0.95, bottom=0.11, top=0.94, wspace=0.1)
 
-        fig.savefig(path_processed / f'reconstruction_error_psd_DM={dm_case}.png', dpi=300)
+        fig.savefig(path_processed / f'jitter_reconstruction_error_psd_dm={dm_case}_bandpass={bandpass}.pdf', dpi=300)

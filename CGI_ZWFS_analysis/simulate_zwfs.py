@@ -64,16 +64,15 @@ def generate_zwfs_data(star_properties: dict, pupil_type: PupilType | str, bandp
 
     if dm_case == 'flat':
         dm_case_name = 'hlc_flat_wfe'
-        dm1 = proper.prop_fits_read(
-            roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm1_v.fits')
-        dm2 = proper.prop_fits_read(
-            roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm2_v.fits')
+    elif dm_case == 'custom':
+        dm_case_name = 'hlc_custom'
     else:
         dm_case_name = 'hlc_ni_' + dm_case
-        dm1 = proper.prop_fits_read(
-            roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm1_v.fits')
-        dm2 = proper.prop_fits_read(
-            roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm2_v.fits')
+
+    dm1 = proper.prop_fits_read(
+        roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm1_v.fits')
+    dm2 = proper.prop_fits_read(
+        roman_preflight_proper.lib_dir + '/examples/' + dm_case_name + '_dm2_v.fits')
 
     # basic optics keywords
     optics_keywords_internal = {

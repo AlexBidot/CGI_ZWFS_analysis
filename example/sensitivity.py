@@ -9,6 +9,7 @@ import matplotlib.gridspec as gridspec
 import pyzelda.zelda as zelda
 import pyzelda.sphere.sequence as zseq
 import scipy.ndimage as ndimage
+import proper
 
 from pathlib import Path
 from tqdm import tqdm
@@ -38,30 +39,33 @@ if __name__ == '__main__':
     bandpass = '1F'
     dm_case  = 'flat'   # flat, 3e-8, 5e-9, 2e-9
 
-    Zidx    = 35     # Zernike polynomial Noll index
-    Zamp    = 5.00  # nm rms
-    emgain  = 2
-    exptime = 1
-    nexp    = 2
+    Zidx    = 159     # Zernike polynomial Noll index - test with 620 works
+    Zamp    = 0.1    # nm rms
+    emgain  = 1
+    exptime = 2
+    nexp    = 150
 
-    generate = True
-    observe  = True
+    generate = False
+    observe  = False
     analyze  = True
+    merge    = False
 
     # paths
-    path = root / 'sensitivity' / f'dm={dm_case}_bandpass={bandpass}_z={Zidx}_amp={Zamp:0.3f}'
+    path = root / 'sensitivity_zernike' / f'dm={dm_case}_bandpass={bandpass}_z={Zidx}_ampl={Zamp:0.3f}'
     path_raw = path / 'raw'
     path_processed = path / 'processed'
 
     path_raw.mkdir(parents=True, exist_ok=True)
     path_processed.mkdir(parents=True, exist_ok=True)
 
+    Tint = exptime * nexp
+
     if generate:
+        #%% simulate data
         ref_star_properties = {
             'Vmag': vmag, 'spectral_type': sptype, 'magtype': 'vegamag',
             }
 
-        #%% simulate data
         zernike_keywords = {
             'zindex': np.array([Zidx, ]),
             'zval_m': np.array([Zamp, ])*1e-9,
@@ -90,7 +94,7 @@ if __name__ == '__main__':
                 hdul[0].header['ZAMPL']   = (Zamp, '[nm rms] Aberration amplitude')
 
     if observe:
-        # generate EMCCD-observed clear pupil and ZWFS images
+        #%% generate EMCCD-observed clear pupil and ZWFS images
         for pupil_type in (zwfs.PupilType.CLEAR, zwfs.PupilType.ZWFS, ):
             # reference data
             inpath = path_raw / f'pupil={pupil_type.value}_aberration=0_emccd=0.fits'
@@ -101,7 +105,7 @@ if __name__ == '__main__':
             data = np.array([exp.data.astype(float) for exp in exposures_ref])
             exposure_ref = np.mean(data, axis=0)
 
-            outpath = path_raw / f'pupil={pupil_type.value}_aberration=0_emccd=1.fits'
+            outpath = path_raw / f'pupil={pupil_type.value}_aberration=0_emccd=1_Tint={Tint}.fits'
             fits.writeto(outpath, exposure_ref, overwrite=True)
             with fits.open(outpath, mode='update') as hdul:
                 hdul[0].header['ZINDEX']  = (Zidx, 'Aberration Zernike index')
@@ -119,7 +123,7 @@ if __name__ == '__main__':
             data = np.array([exp.data.astype(float) for exp in exposures])
             exposure = np.mean(data, axis=0)
 
-            outpath = path_raw / f'pupil={pupil_type.value}_aberration=1_emccd=1.fits'
+            outpath = path_raw / f'pupil={pupil_type.value}_aberration=1_emccd=1_Tint={Tint}.fits'
             fits.writeto(outpath, exposure, overwrite=True)
             with fits.open(outpath, mode='update') as hdul:
                 hdul[0].header['ZINDEX']  = (Zidx, 'Aberration Zernike index')
@@ -172,8 +176,8 @@ if __name__ == '__main__':
         opd_ref_noiseless = z.analyze(clear_pupil, zelda_pupil, wave=wave)
 
         # reference case
-        zelda_pupil_file = f'pupil=zwfs_aberration=0_emccd=1'
-        clear_pupil_file = f'pupil=clear_aberration=0_emccd=1'
+        zelda_pupil_file = f'pupil=zwfs_aberration=0_emccd=1_Tint={Tint}'
+        clear_pupil_file = f'pupil=clear_aberration=0_emccd=1_Tint={Tint}'
         dark_file        = None
 
         z = zelda.Sensor('ROMAN-CGI')
@@ -194,8 +198,8 @@ if __name__ == '__main__':
         opd_noiseless = z.analyze(clear_pupil, zelda_pupil, wave=wave)
 
         # differential aberration case
-        zelda_pupil_file = f'pupil=zwfs_aberration=1_emccd=1'
-        clear_pupil_file = f'pupil=clear_aberration=1_emccd=1'
+        zelda_pupil_file = f'pupil=zwfs_aberration=1_emccd=1_Tint={Tint}'
+        clear_pupil_file = f'pupil=clear_aberration=1_emccd=1_Tint={Tint}'
         dark_file        = None
 
         z = zelda.Sensor('ROMAN-CGI')
@@ -221,11 +225,11 @@ if __name__ == '__main__':
 
         opd_ref[pupil_analysis == 0] = np.nan
         opd_ref = opd_ref - np.nanmean(opd_ref[pupil_analysis])
-        fits.writeto(path_processed / 'opd_map_ref.fits', opd_ref, overwrite=True)
+        fits.writeto(path_processed / f'opd_map_ref_Tint={Tint}.fits', opd_ref, overwrite=True)
 
         opd[pupil_analysis == 0] = np.nan
         opd = opd - np.nanmean(opd[pupil_analysis])
-        fits.writeto(path_processed / 'opd_map.fits', opd, overwrite=True)
+        fits.writeto(path_processed / f'opd_map_Tint={Tint}.fits', opd, overwrite=True)
 
         #%%
         opd_diff_noiseless = opd_noiseless - opd_ref_noiseless
@@ -233,14 +237,18 @@ if __name__ == '__main__':
         opd_diff = opd - opd_ref
         opd_diff = imutils.sigma_filter(opd_diff, box=12, nsigma=3, iterate=True)
 
+        data = np.stack((opd_diff_noiseless, opd_diff))
+        fits.writeto(path_processed / f'differential_opd_maps_Tint={Tint}.fits', data, overwrite=True)
+
         # plot
+        plt.close('all')
         fig = plt.figure('Reconstruction error', figsize=(9, 7))
         fig.clf()
 
         gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.1])
 
         cmap = mpl.cm.bwr
-        norm = colors.Normalize(vmin=-0.1, vmax=0.1)
+        norm = colors.Normalize(vmin=-0.5, vmax=0.5)
 
         ax = fig.add_subplot(gs[0])
         ax.set_rasterization_zorder(-1_000)
@@ -250,7 +258,8 @@ if __name__ == '__main__':
         ax.xaxis.set_ticks([])
         ax.yaxis.set_ticks([])
 
-        ax.set_title(f'bandpass={bandpass}, DM={dm_case}, Z$_\\mathrm{{index}}$={Zidx}, Z$_\\mathrm{{ampl}}$={Zamp*1000:.0f}pm')
+        #ax.set_title(f'bandpass={bandpass}, DM={dm_case}, Z$_\\mathrm{{index}}$={Zidx}, Z$_\\mathrm{{ampl}}$={Zamp*1000:.0f}pm')
+        ax.set_title(f'Z$_\\mathrm{{index}}$={Zidx}, Z$_\\mathrm{{ampl}}$={Zamp*1000:.0f}pm, T$_\\mathrm{{int}}$={Tint} s')
 
         ax = fig.add_subplot(gs[1])
         cbar = fig.colorbar(cim, cax=ax)
@@ -258,35 +267,90 @@ if __name__ == '__main__':
 
         fig.subplots_adjust(left=0.02, right=0.84, bottom=0.03, top=0.94, wspace=0.1)
 
-        fig.savefig(path_processed / f'differential_opd_map.png', dpi=300)
+        fig.savefig(path_processed / f'differential_opd_map_z={Zidx}_ampl={Zamp:.3f}_Tint={Tint}.pdf', dpi=300)
 
         #%% PSD
-        psd_cutoff = 100  # cycles/pupil
+        psd_cutoff = 150  # cycles/pupil
 
-        psd_cube_noiseless = zseq.compute_psd(None, np.nan_to_num(opd_diff_noiseless[np.newaxis, ...]), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
-        psd_int_noiseless, psd_bnds_noiseless = zseq.integrate_psd(None, psd_cube_noiseless, freq_cutoff=psd_cutoff)
+        # original noiseless OPD map
+        psd_cube = zseq.compute_psd(None, np.nan_to_num(opd_ref_noiseless[np.newaxis, ...]), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
+        psd_int_ref_noiseless, psd_bnds_ref_noiseless = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
+
+        # differential OPD maps
+        psd_cube = zseq.compute_psd(None, np.nan_to_num(opd_diff_noiseless[np.newaxis, ...]), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
+        psd_int_diff_noiseless, psd_bnds_diff_noiseless = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
 
         psd_cube = zseq.compute_psd(None, np.nan_to_num(opd_diff[np.newaxis, ...]), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
-        psd_int, psd_bnds = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
+        psd_int_diff, psd_bnds_diff = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
 
+        #%% plot
         fig = plt.figure('Reconstruction error PSD', figsize=(9, 7))
         fig.clf()
 
         ax = fig.add_subplot(111)
 
-        ax.step(psd_bnds_noiseless[:, 0], psd_int_noiseless, label='Noiseless')
-        ax.step(psd_bnds[:, 0], psd_int, label='EMCCD exposures')
+        ax.step(psd_bnds_ref_noiseless[:, 0], psd_int_ref_noiseless, label='Full OPD (noiseless)')
+        ax.step(psd_bnds_diff_noiseless[:, 0], psd_int_diff_noiseless, label='Differential OPD (noiseless)')
+        ax.step(psd_bnds_diff[:, 0], psd_int_diff, label='Differential OPD (EMCCD)')
 
         ax.set_xlabel('Spatial frequency [c/p]')
-        ax.set_xlim(0, 50)
+        ax.set_xlim(0, 60)
 
         ax.set_yscale('log')
         ax.set_ylabel('PSD [nm rms / (c/p)]')
+        ax.set_ylim(1e-4, 1e-1)
 
-        ax.legend()
+        ax.legend(fontsize='small', loc='upper right')
 
         ax.set_title(f'bandpass={bandpass}, DM={dm_case}, Z$_\\mathrm{{index}}$={Zidx}, Z$_\\mathrm{{ampl}}$={Zamp*1000:.0f}pm')
 
-        fig.subplots_adjust(left=0.15, right=0.95, bottom=0.1, top=0.94, wspace=0.1)
+        fig.subplots_adjust(left=0.15, right=0.95, bottom=0.11, top=0.94, wspace=0.1)
 
-        fig.savefig(path_processed / f'differential_opd_map_psd.png', dpi=300)
+        fig.savefig(path_processed / f'differential_opd_map_psd_Tint={Tint}.png', dpi=300)
+
+    if merge:
+        Tints = [100, 300, 1000, 3000, 10_000]
+        psd_cutoff = 150  # cycles/pupil
+
+        data = fits.getdata(path_processed / f'differential_opd_maps_Tint={Tints[0]}.fits')
+        opd_diff_noiseless = data[0]
+
+        # erode pupil to avoid edge effects
+        pupil = (opd_diff_noiseless != 0)
+        pupil_analysis = ndimage.binary_erosion(pupil, iterations=4)
+
+        # differential OPD maps
+        psd_cube = zseq.compute_psd(None, np.nan_to_num(opd_diff_noiseless[np.newaxis, ...]), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
+        psd_int_diff_noiseless, psd_bnds_diff_noiseless = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
+
+        # plot
+        fig = plt.figure('Reconstruction error PSD - Tint', figsize=(9, 7))
+        fig.clf()
+
+        ax = fig.add_subplot(111)
+
+        ax.step(psd_bnds_diff_noiseless[:, 0], psd_int_diff_noiseless, label='Noiseless')
+
+        for Tint in Tints:
+            data = fits.getdata(path_processed / f'differential_opd_maps_Tint={Tint}.fits')
+            opd_diff = data[1]
+            psd_cube = zseq.compute_psd(None, np.nan_to_num(opd_diff[np.newaxis, ...]), freq_cutoff=psd_cutoff, return_fft=False, pupil_mask=pupil_analysis)
+            psd_int_diff, psd_bnds_diff = zseq.integrate_psd(None, psd_cube, freq_cutoff=psd_cutoff)
+
+
+            ax.step(psd_bnds_diff[:, 0], psd_int_diff, label=f'Tint = {Tint} s')
+
+        ax.set_xlabel('Spatial frequency [c/p]')
+        ax.set_xlim(0, 60)
+
+        ax.set_yscale('log')
+        ax.set_ylabel('PSD [nm rms / (c/p)]')
+        ax.set_ylim(1e-4, 2e-2)
+
+        ax.legend(fontsize='small', loc='upper right')
+
+        ax.set_title(f'bandpass={bandpass}, DM={dm_case}, Z$_\\mathrm{{index}}$={Zidx}, Z$_\\mathrm{{ampl}}$={Zamp*1000:.0f}pm')
+
+        fig.subplots_adjust(left=0.15, right=0.95, bottom=0.11, top=0.94, wspace=0.1)
+
+        fig.savefig(path_processed / f'differential_opd_map_psd_Tint=all.pdf', dpi=300)

@@ -48,14 +48,14 @@ if __name__ == '__main__':
     vmag   = 2
     sptype = 'G0V'
 
-    bandpass = '1B'
+    bandpass = '1F'
     dm_case  = '5e-9'   # flat, 3e-8, 5e-9, 2e-9
 
     grid_geom = '1d'  # 1d, 2d
     grid_size = 20    # mas
     grid_step = 0.1   # mas
 
-    generate = False
+    generate = True
     analyze  = True
 
     # generate grid of offsets
@@ -232,7 +232,7 @@ if __name__ == '__main__':
             error_maps_plot[0] = np.nan
             ax.semilogy(xgrid, error_maps_plot[:, 2], linestyle='-', label='RMS')
             ax.semilogy(xgrid, error_maps_plot[:, 1]-error_maps[iopd, 0], linestyle='--', label='PtV')
-            ax.axvline(4, linestyle=':', color='k', label='Jitter (no LOWFS)')
+            ax.axvline(9, linestyle=':', color='k', label='Jitter (no LOWFS)')
 
             ax.set_xlabel('Offset [mas]')
             ax.set_xlim(0, grid_size)
@@ -248,7 +248,7 @@ if __name__ == '__main__':
 
             fig.subplots_adjust(left=0.13, right=0.87, bottom=0.1, top=0.95, wspace=0.1)
 
-            fig.savefig(path_processed / f'reconstruction_error_DM={dm_case}.png', dpi=300)
+            fig.savefig(path_processed / f'offset_reconstruction_error_dm={dm_case}_bandpass={bandpass}.pdf', dpi=300)
 
             # PSD
             fig = plt.figure('PSD', figsize=(9, 7))
@@ -267,8 +267,8 @@ if __name__ == '__main__':
             psd_int_plot[psd_int_plot == 0] = 1e-10
             cim = ax.pcolormesh(freq, xgrid, psd_int_plot.T, cmap=cmap, norm=norm, zorder=-10_000)
             ax.contour(freq, xgrid, psd_int_plot.T, levels=[0.03, 0.1, 0.3, 1.0], colors=['w', 'w', 'k', 'k'])
-            ax.axhline(4, linestyle=':', color='w', label='Jitter (no LOWFS)')
-            ax.text(0.3, 4.3, 'Jitter (no LOWFS)', fontsize='x-small', color='w')
+            ax.axhline(9, linestyle=':', color='w', label='Jitter (no LOWFS)')
+            ax.text(0.3, 9.3, 'Jitter (no LOWFS)', fontsize='x-small', color='w')
 
             ax.set_xlabel('Spatial frequency [c/p]')
             ax.set_xlim(0, 60)
@@ -290,31 +290,4 @@ if __name__ == '__main__':
 
             fig.subplots_adjust(left=0.1, right=0.87, bottom=0.11, top=0.94, wspace=0.1)
 
-            fig.savefig(path_processed / f'reconstruction_error_psd_DM={dm_case}.png', dpi=300)
-
-
-        # fig = plt.figure('Error map', figsize=(9, 7))
-        # fig.clf()
-
-        # gs = gridspec.GridSpec(1, 2, width_ratios=[1, 0.1])
-
-        # cmap = mpl.cm.plasma
-        # norm = colors.Normalize(vmin=0, vmax=20)
-
-        # ax = fig.add_subplot(gs[0])
-        # cim = ax.pcolormesh(xgrid, ygrid, error_map, cmap=cmap, norm=norm)
-
-        # ax.set_xlabel('x offset [mas]')
-        # ax.set_ylabel('y offset [mas]')
-        # ax.set_title(f'bandpass={bandpass}, DM={dm_case}')
-
-        # ax.set_aspect('equal')
-
-        # ax = fig.add_subplot(gs[1])
-        # cbar = fig.colorbar(cim, cax=ax)
-        # cbar.locator = ticker.MultipleLocator(5)
-        # cbar.set_label('OPD error [nm rms]')
-
-        # fig.subplots_adjust(left=0.13, right=0.87, bottom=0.1, top=0.95, wspace=0.1)
-
-        # fig.savefig(path_processed / 'error_map.pdf', dpi=300)
+            fig.savefig(path_processed / f'offset_reconstruction_error_psd_dm={dm_case}_bandpass={bandpass}.pdf', dpi=300)
